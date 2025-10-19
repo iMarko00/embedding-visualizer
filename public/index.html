@@ -31,6 +31,9 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       z-index: 1000;
       transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .info-button:hover {
       background: #0056b3;
@@ -94,6 +97,32 @@
       padding: 10px 20px;
       font-size: 16px;
       cursor: pointer;
+      position: relative;
+    }
+    .loading {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+    .loading::after {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      margin: auto;
+      border: 2px solid transparent;
+      border-top-color: #ffffff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .loading-text {
+      opacity: 0;
+    }
+    @keyframes spin {
+      0% { transform: translate(-50%, -50%) rotate(0deg); }
+      100% { transform: translate(-50%, -50%) rotate(360deg); }
     }
     #plot {
       width: 80%;
@@ -176,8 +205,17 @@
       const input = document.getElementById("requirementsInput").value.trim();
       if (!input) return alert("Please enter some requirements!");
       
-      // splitting the input at every new line and trimming whitespace
-      const requirements = input.split("\n").map(r => r.trim()).filter(Boolean);
+      const submitBtn = document.getElementById("submitBtn");
+      const originalText = submitBtn.textContent;
+      
+      // Show loading state
+      submitBtn.classList.add("loading");
+      submitBtn.innerHTML = '<span class="loading-text">Processing...</span>';
+      submitBtn.disabled = true;
+      
+      try {
+        // splitting the input at every new line and trimming whitespace
+        const requirements = input.split("\n").map(r => r.trim()).filter(Boolean);
 
       const response = await fetch("/embed", {
         method: "POST",
@@ -283,6 +321,16 @@
       };
 
       Plotly.newPlot("plot", [trace], layout);
+      
+      } catch (error) {
+        console.error("Error:", error);
+        alert("An error occurred while processing your requirements. Please try again.");
+      } finally {
+        // Reset button state
+        submitBtn.classList.remove("loading");
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+      }
     });
   </script>
 </body>
