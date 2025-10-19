@@ -3,55 +3,79 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Embedding Visualizer</title>
+  <title>Requirement Embedding Visualizer</title>
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   <style>
     body {
       font-family: sans-serif;
       background: #fafafa;
+      margin: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
+    }
+    textarea {
+      width: 80%;
+      height: 120px;
+      margin-top: 20px;
+      font-size: 16px;
+      padding: 10px;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
     }
     #plot {
       width: 80%;
-      height: 80%;
+      height: 500px;
+      margin-top: 30px;
     }
   </style>
 </head>
 <body>
-  <h2>2D Embedding Visualization (Mock Data)</h2>
+  <h2>Requirement Embedding Visualizer</h2>
+
+  <textarea id="requirementsInput" placeholder="Enter each requirement on a new line..."></textarea>
+  <button id="submitBtn">Visualize Embeddings</button>
+
   <div id="plot"></div>
 
   <script>
-    async function drawPlot() {
-      const response = await fetch("/data");
+    document.getElementById("submitBtn").addEventListener("click", async () => {
+      const input = document.getElementById("requirementsInput").value.trim();
+      if (!input) return alert("Please enter some requirements!");
+
+      const requirements = input.split("\n").map(r => r.trim()).filter(Boolean);
+
+      const response = await fetch("/embed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requirements })
+      });
+
       const points = await response.json();
+      if (points.error) return alert(points.error);
 
       const trace = {
         x: points.map(p => p.x),
         y: points.map(p => p.y),
-        text: points.map(p => p.label),
+        text: points.map(p => p.text),
         mode: "markers+text",
         type: "scatter",
-        marker: { size: 12, color: "steelblue" },
+        marker: { size: 12, color: "tomato" },
         textposition: "top center"
       };
 
       const layout = {
         xaxis: { title: "X" },
         yaxis: { title: "Y" },
-        hovermode: "closest",
-        title: "Mock 2D Embedding Space"
+        title: "2D Embedding Visualization"
       };
 
       Plotly.newPlot("plot", [trace], layout);
-    }
-
-    drawPlot();
+    });
   </script>
 </body>
 </html>

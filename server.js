@@ -1,23 +1,58 @@
-// server.js
 import express from "express";
+import bodyParser from "body-parser";
+import OpenAI from "openai";
+import { PCA } from "ml-pca";
 
 const app = express();
 const port = 3000;
 
-// Serve static files (our HTML, CSS, JS)
 app.use(express.static("public"));
+app.use(bodyParser.json());
 
-app.get("/data", (req, res) => {
-  // Mock 10 2D vectors (pretend these are PCA/t-SNE results)
-  const points = Array.from({ length: 10 }, (_, i) => ({
-    id: i + 1,
-    x: Math.random() * 2 - 1,  // between -1 and 1
-    y: Math.random() * 2 - 1,
-    label: `Point ${i + 1}`
-  }));
-  res.json(points);
+console.log("🔑 OpenAI API key loaded?", !!process.env.OPENAI_API_KEY);
+
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+app.post("/embed", async (req, res) => {
+  const { requirements } = req.body;
+  console.log("📩 Received requirements:", requirements);
+
+  if (!requirements || requirements.length === 0) {
+    console.warn("⚠️ No requirements provided!");
+    return res.status(400).json({ error: "No requirements provided" });
+  }
+
+  try {
+    console.log("🧠 Requesting embeddings from OpenAI...");
+    const response = await client.embeddings.create({
+      model: "text-embedding-3-small",
+      input: requirements,
+    });
+    console.log("✅ Embeddings received!");
+    console.log("🔍 Embeddings:", response.data);
+
+    const embeddings = response.data.map((item) => item.embedding);
+
+    console.log("📉 Running PCA...");
+    const pca = new PCA(embeddings);
+    const reduced = pca.predict(embeddings, { nComponents: 2 }).to2DArray();
+
+    const points = requirements.map((req, i) => ({
+      text: req,
+      x: reduced[i][0],
+      y: reduced[i][1],
+    }));
+
+    console.log("📊 Returning reduced points to frontend.");
+    res.json(points);
+  } catch (err) {
+    console.error("❌ Error during embedding:", err);
+    res.status(500).json({ error: "Embedding failed", details: err.message });
+  }
 });
 
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  console.log(`🚀 Server running at http://localhost:${port}`);
 });
