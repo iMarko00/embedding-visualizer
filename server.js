@@ -35,18 +35,31 @@ app.post("/embed", async (req, res) => {
 
     const embeddings = response.data.map((item) => item.embedding);
 
-    console.log("📉 Running PCA...");
-    const pca = new PCA(embeddings);
-    const reduced = pca.predict(embeddings, { nComponents: 2 }).to2DArray();
+    // Only run PCA if we have at least 2 unique embeddings
+    if (embeddings.length < 2) {
+      console.warn("⚠️ Not enough data for PCA, returning flat points.");
+      return res.json(
+        requirements.map((req, i) => ({
+          text: req,
+          x: 0,
+          y: i,
+        }))
+      );
+    }
 
-    const points = requirements.map((req, i) => ({
-      text: req,
-      x: reduced[i][0],
-      y: reduced[i][1],
-    }));
+  // Defensive copy so ml-pca can't mutate
+  const pca = new PCA(embeddings);
+  const nComp = Math.min(2, embeddings.length);
+  const reduced = pca.predict(embeddings, { nComponents: nComp }).to2DArray();
 
-    console.log("📊 Returning reduced points to frontend.");
-    res.json(points);
+  const points = requirements.map((req, i) => ({
+    text: req,
+    x: reduced[i][0],
+    y: reduced[i][1],
+  }));
+
+  res.json(points);
+
   } catch (err) {
     console.error("❌ Error during embedding:", err);
     res.status(500).json({ error: "Embedding failed", details: err.message });
