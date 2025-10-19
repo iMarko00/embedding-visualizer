@@ -13,6 +13,74 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      position: relative;
+    }
+    .info-button {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #007bff;
+      color: white;
+      border: none;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 1000;
+      transition: all 0.3s ease;
+    }
+    .info-button:hover {
+      background: #0056b3;
+      transform: scale(1.1);
+    }
+    .info-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1001;
+    }
+    .info-content {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      max-width: 500px;
+      margin: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .info-content h3 {
+      margin-top: 0;
+      color: #333;
+    }
+    .process-step {
+      margin: 15px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border-left: 4px solid #007bff;
+    }
+    .process-step h4 {
+      margin: 0 0 8px 0;
+      color: #007bff;
+    }
+    .close-button {
+      float: right;
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #666;
+    }
+    .close-button:hover {
+      color: #333;
     }
     textarea {
       width: 80%;
@@ -35,6 +103,40 @@
   </style>
 </head>
 <body>
+  <!-- Info Button -->
+  <button class="info-button" id="infoBtn">ℹ</button>
+  
+  <!-- Info Modal -->
+  <div class="info-modal" id="infoModal">
+    <div class="info-content">
+      <button class="close-button" id="closeBtn">&times;</button>
+      <h3>How It Works</h3>
+      <p>This tool uses AI to analyze and visualize requirement relationships through a 4-step process:</p>
+      
+      <div class="process-step">
+        <h4>1. Text Embedding</h4>
+        <p>Each requirement is converted into a high-dimensional vector (1536 dimensions) using OpenAI's <strong>text-embedding-3-small</strong> model. This captures the semantic meaning and context of each requirement.</p>
+      </div>
+      
+      <div class="process-step">
+        <h4>2. Dimensionality Reduction (PCA)</h4>
+        <p>The 1536-dimensional vectors are reduced to 2D coordinates using <strong>Principal Component Analysis (PCA)</strong> from the ml-pca library. This preserves the most important relationships while making them visualizable on a 2D plane.</p>
+      </div>
+      
+      <div class="process-step">
+        <h4>3. Clustering (DBSCAN)</h4>
+        <p>Similar requirements are grouped into clusters using the <strong>DBSCAN (Density-Based Spatial Clustering)</strong> algorithm from density-clustering library. Parameters: eps=0.3, minPts=2. This identifies dense regions of similar requirements.</p>
+      </div>
+      
+      <div class="process-step">
+        <h4>4. AI-Powered Naming</h4>
+        <p>Each cluster receives a meaningful name using <strong>OpenAI's GPT-3.5-turbo</strong> model, which analyzes the requirements in each cluster and suggests descriptive names like "User Authentication" or "Payment Processing".</p>
+      </div>
+      
+      <p><strong>Result:</strong> Requirements with similar meanings appear close together in colored clusters with descriptive names, making it easy to identify related functionality, potential overlaps, and requirement organization.</p>
+    </div>
+  </div>
+
   <h2>Requirement Embedding Visualizer</h2>
 
   <textarea id="requirementsInput" placeholder="Enter each requirement on a new line..."></textarea>
@@ -43,6 +145,33 @@
   <div id="plot"></div>
 
   <script>
+    // Info modal functionality
+    const infoBtn = document.getElementById("infoBtn");
+    const infoModal = document.getElementById("infoModal");
+    const closeBtn = document.getElementById("closeBtn");
+
+    infoBtn.addEventListener("click", () => {
+      infoModal.style.display = "flex";
+    });
+
+    closeBtn.addEventListener("click", () => {
+      infoModal.style.display = "none";
+    });
+
+    // Close modal when clicking outside
+    infoModal.addEventListener("click", (e) => {
+      if (e.target === infoModal) {
+        infoModal.style.display = "none";
+      }
+    });
+
+    // Close modal with Escape key
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && infoModal.style.display === "flex") {
+        infoModal.style.display = "none";
+      }
+    });
+
     document.getElementById("submitBtn").addEventListener("click", async () => {
       const input = document.getElementById("requirementsInput").value.trim();
       if (!input) return alert("Please enter some requirements!");
