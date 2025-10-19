@@ -46,7 +46,7 @@
     document.getElementById("submitBtn").addEventListener("click", async () => {
       const input = document.getElementById("requirementsInput").value.trim();
       if (!input) return alert("Please enter some requirements!");
-
+      // splitting the input at every new line and trimming whitespace
       const requirements = input.split("\n").map(r => r.trim()).filter(Boolean);
 
       const response = await fetch("/embed", {
@@ -56,26 +56,93 @@
       });
 
       const points = await response.json();
-      if (points.error) return alert(points.error);
+      if (!points || points.error) return alert(points?.error || "No data received.");
 
-      const trace = {
-        x: points.map(p => p.x),
-        y: points.map(p => p.y),
-        text: points.map(p => p.text),
-        mode: "markers+text",
-        type: "scatter",
-        marker: { size: 12, color: "tomato" },
-        textposition: "top center"
-      };
+    // scatter plot for requirement points
+    const trace = {
+      x: points.map(p => p.x),
+      y: points.map(p => p.y),
+      text: points.map(p => p.text),
+      mode: "markers+text",
+      type: "scatter",
+      marker: {
+        size: 12,
+        color: points.map(p => p.cluster),
+        colorscale: "Blues"
+      },
+      textposition: "top center"
+    };
 
-      const layout = {
-        xaxis: { title: "X" },
-        yaxis: { title: "Y" },
-        title: "2D Embedding Visualization"
-      };
+    // add light blue circle shapes for each detected cluster
+    const shapes = clusters.map(c => ({
+      type: "circle",
+      xref: "x", yref: "y",
+      x0: c.cx - c.radius * 1.2,
+      x1: c.cx + c.radius * 1.2,
+      y0: c.cy - c.radius * 1.2,
+      y1: c.cy + c.radius * 1.2,
+      line: { color: "lightblue", width: 2 },
+      fillcolor: "rgba(173,216,230,0.15)"
+    }));
 
-      Plotly.newPlot("plot", [trace], layout);
+    // layout includes cluster circles
+    const layout = {
+      xaxis: { title: "X" },
+      yaxis: { title: "Y" },
+      title: "2D Requirement Clusters (auto-detected)",
+      shapes
+    };
+
+    Plotly.newPlot("plot", [trace], layout);
     });
   </script>
 </body>
 </html>
+
+<script>
+  document.getElementById("submitBtn").addEventListener("click", async () => {
+    const input = document.getElementById("requirementsInput").value.trim();
+    if (!input) return alert("Please enter some requirements!");
+
+    const requirements = input.split("\n").map(r => r.trim()).filter(Boolean);
+    const response = await fetch("/embed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requirements })
+    });
+
+    const { points, clusters } = await response.json();
+
+    // Each requirement point
+    const trace = {
+      x: points.map(p => p.x),
+      y: points.map(p => p.y),
+      text: points.map(p => p.text),
+      mode: "markers+text",
+      type: "scatter",
+      marker: { size: 10, color: points.map(p => p.cluster), colorscale: "Blues" },
+      textposition: "top center"
+    };
+
+    // Light blue circle around each cluster
+    const shapes = clusters.map(c => ({
+      type: "circle",
+      xref: "x", yref: "y",
+      x0: c.cx - c.radius * 1.2,
+      x1: c.cx + c.radius * 1.2,
+      y0: c.cy - c.radius * 1.2,
+      y1: c.cy + c.radius * 1.2,
+      line: { color: "lightblue", width: 2 },
+      fillcolor: "rgba(173,216,230,0.15)"
+    }));
+
+    const layout = {
+      xaxis: { title: "X" },
+      yaxis: { title: "Y" },
+      title: "2D Requirement Clusters",
+      shapes
+    };
+
+    Plotly.newPlot("plot", [trace], layout);
+  });
+</script>

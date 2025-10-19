@@ -1,7 +1,8 @@
 import express from "express";
 import bodyParser from "body-parser";
 import OpenAI from "openai";
-import { PCA } from "ml-pca";
+import { PCA } from "ml-pca"; // for dimensionality reduction
+import clustering from "density-clustering"; // for clustering
 
 const app = express();
 const port = 3000;
@@ -35,31 +36,46 @@ app.post("/embed", async (req, res) => {
 
     const embeddings = response.data.map((item) => item.embedding);
 
-    // Only run PCA if we have at least 2 unique embeddings
-    if (embeddings.length < 2) {
-      console.warn("⚠️ Not enough data for PCA, returning flat points.");
-      return res.json(
-        requirements.map((req, i) => ({
-          text: req,
-          x: 0,
-          y: i,
-        }))
+    // Step 1 — PCA reduction (1536D → 2D)
+    const pca = new PCA(embeddings);
+    const reduced = pca.predict(embeddings, { nComponents: 2 }).to2DArray();
+
+    // Step 2 — Run DBSCAN on the reduced 2D points
+    const dbscan = new clustering.DBSCAN();
+    // eps controls cluster radius, minPts = minimum points per cluster
+    const clusters = dbscan.run(reduced, 0.3, 2);
+
+    // Step 3 — Build cluster data
+    const clusterMap = new Map();
+
+    clusters.forEach((indices, clusterId) => {
+      const clusterPoints = indices.map((i) => reduced[i]);
+      const cx = clusterPoints.reduce((a, b) => a + b[0], 0) / clusterPoints.length;
+      const cy = clusterPoints.reduce((a, b) => a + b[1], 0) / clusterPoints.length;
+      const radius = Math.max(
+        ...clusterPoints.map(([x, y]) => Math.hypot(x - cx, y - cy))
       );
-    }
+      clusterMap.set(clusterId, { cx, cy, radius });
+    });
 
-  // Defensive copy so ml-pca can't mutate
-  const pca = new PCA(embeddings);
-  const nComp = Math.min(2, embeddings.length);
-  const reduced = pca.predict(embeddings, { nComponents: nComp }).to2DArray();
+    // Step 4 — Combine reduced points with their cluster assignments
+    const labeledPoints = reduced.map(([x, y], i) => {
+      let clusterId = -1;
+      clusters.forEach((indices, id) => {
+        if (indices.includes(i)) clusterId = id;
+      });
+      return { text: requirements[i], x, y, cluster: clusterId };
+    });
 
-  const points = requirements.map((req, i) => ({
-    text: req,
-    x: reduced[i][0],
-    y: reduced[i][1],
-  }));
-
-  res.json(points);
-
+    res.json({
+      points: labeledPoints,
+      clusters: Array.from(clusterMap.entries()).map(([id, { cx, cy, radius }]) => ({
+        id,
+        cx,
+        cy,
+        radius,
+      })),
+    });
   } catch (err) {
     console.error("❌ Error during embedding:", err);
     res.status(500).json({ error: "Embedding failed", details: err.message });
