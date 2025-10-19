@@ -2,7 +2,7 @@ import express from "express";
 import bodyParser from "body-parser";
 import OpenAI from "openai";
 import { PCA } from "ml-pca"; // for dimensionality reduction
-import clustering from "density-clustering"; // for clustering
+import { DBSCAN } from "density-clustering"; // for clustering
 
 const app = express();
 const port = 3000;
@@ -41,12 +41,46 @@ app.post("/embed", async (req, res) => {
     const reduced = pca.predict(embeddings, { nComponents: 2 }).to2DArray();
 
     // Step 2 — Run DBSCAN on the reduced 2D points
-    const dbscan = new clustering.DBSCAN();
+    const dbscan = new DBSCAN();
     // eps controls cluster radius, minPts = minimum points per cluster
     const clusters = dbscan.run(reduced, 0.3, 2);
 
-    // Step 3 — Build cluster data
+    // Step 3 — Build cluster data and generate names
     const clusterMap = new Map();
+
+    // Generate cluster names using OpenAI
+    console.log("🏷️ Generating cluster names with OpenAI...");
+    const clusterNames = await Promise.all(
+      clusters.map(async (indices, clusterId) => {
+        const clusterRequirements = indices.map(i => requirements[i]);
+        console.log(`📝 Cluster ${clusterId} requirements:`, clusterRequirements);
+        
+        try {
+          const completion = await client.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+              {
+                role: "system",
+                content: "You are an expert at analyzing software requirements and grouping them into meaningful categories. Given a list of related requirements, provide a concise, descriptive name (2-4 words) that captures the common theme or functionality. Examples: 'User Authentication', 'Payment Processing', 'Data Management', 'UI Components', 'Security Features'."
+              },
+              {
+                role: "user",
+                content: `Analyze these requirements and suggest a concise name for this cluster:\n\n${clusterRequirements.map((req, i) => `${i + 1}. ${req}`).join('\n')}\n\nProvide only the cluster name, nothing else.`
+              }
+            ],
+            max_tokens: 20,
+            temperature: 0.3
+          });
+          
+          const name = completion.choices[0].message.content.trim().replace(/['"]/g, '');
+          console.log(`✅ Cluster ${clusterId} named: "${name}"`);
+          return name;
+        } catch (error) {
+          console.warn(`⚠️ Failed to generate name for cluster ${clusterId}:`, error.message);
+          return `Cluster ${clusterId}`;
+        }
+      })
+    );
 
     clusters.forEach((indices, clusterId) => {
       const clusterPoints = indices.map((i) => reduced[i]);
@@ -55,7 +89,12 @@ app.post("/embed", async (req, res) => {
       const radius = Math.max(
         ...clusterPoints.map(([x, y]) => Math.hypot(x - cx, y - cy))
       );
-      clusterMap.set(clusterId, { cx, cy, radius });
+      clusterMap.set(clusterId, { 
+        cx, 
+        cy, 
+        radius, 
+        name: clusterNames[clusterId] || `Cluster ${clusterId}` 
+      });
     });
 
     // Step 4 — Combine reduced points with their cluster assignments
@@ -69,11 +108,12 @@ app.post("/embed", async (req, res) => {
 
     res.json({
       points: labeledPoints,
-      clusters: Array.from(clusterMap.entries()).map(([id, { cx, cy, radius }]) => ({
+      clusters: Array.from(clusterMap.entries()).map(([id, { cx, cy, radius, name }]) => ({
         id,
         cx,
         cy,
         radius,
+        name,
       })),
     });
   } catch (err) {
