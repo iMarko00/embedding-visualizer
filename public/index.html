@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Embedding Visualizer</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #fafafa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    #plot {
+      width: 80%;
+      height: 80%;
+    }
+  </style>
+</head>
+<body>
+  <h2>2D Embedding Visualization (Mock Data)</h2>
+  <div id="plot"></div>
+
+  <script>
+    async function drawPlot() {
+      const response = await fetch("/data");
+      const points = await response.json();
+
+      const trace = {
+        x: points.map(p => p.x),
+        y: points.map(p => p.y),
+        text: points.map(p => p.label),
+        mode: "markers+text",
+        type: "scatter",
+        marker: { size: 12, color: "steelblue" },
+        textposition: "top center"
+      };
+
+      const layout = {
+        xaxis: { title: "X" },
+        yaxis: { title: "Y" },
+        hovermode: "closest",
+        title: "Mock 2D Embedding Space"
+      };
+
+      Plotly.newPlot("plot", [trace], layout);
+    }
+
+    drawPlot();
+  </script>
+</body>
+</html>
