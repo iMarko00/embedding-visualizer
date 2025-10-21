@@ -4,6 +4,10 @@ import OpenAI from "openai";
 import { PCA } from "ml-pca"; // for dimensionality reduction
 import { DBSCAN } from "density-clustering"; // for clustering
 import { kmeans } from "ml-kmeans"; // fallback clustering
+import axios from "axios";
+
+const MARQO_URL = "http://localhost:8882";
+const INDEX_NAME = "earlybird_requirements";
 
 const app = express();
 const port = 3000;
@@ -97,6 +101,23 @@ async function processClusters(clusters, requirements, reduced, client) {
   };
 }
 
+// Helper: compute adaptive k (number of clusters) from 2D point density
+function computeAdaptiveK(points, n, opts = {}) {
+  const { minK = 2, maxRatio = 0.5, scale = 2 } = opts;
+  if (!Array.isArray(points) || points.length === 0) return Math.max(minK, 2);
+  const xs = points.map(p => p[0]);
+  const ys = points.map(p => p[1]);
+  const width = Math.max(...xs) - Math.min(...xs);
+  const height = Math.max(...ys) - Math.min(...ys);
+  const area = Math.max(width * height, 1e-6); // avoid div by zero
+  const density = n / area;
+  // heuristic: more points and higher density -> more clusters
+  const kRaw = Math.round(Math.sqrt(n * density) * scale);
+  const maxK = Math.max(2, Math.floor(n * maxRatio));
+  const k = Math.min(Math.max(minK, kRaw || minK), Math.max(2, Math.floor(n / 2), maxK));
+  return k;
+}
+
 app.post("/embed", async (req, res) => {
   const { requirements } = req.body;
   console.log("📩 Received requirements:", requirements);
@@ -116,6 +137,41 @@ app.post("/embed", async (req, res) => {
     console.log("🔍 Embeddings:", response.data);
 
     const embeddings = response.data.map((item) => item.embedding);
+
+    // --- Store in Marqo ---
+    console.log("💾 Storing embeddings in Marqo...");
+
+    try {
+    // Create or reuse index
+    await axios.post(`${MARQO_URL}/indexes/${INDEX_NAME}`, {
+  model: "generic-embedding",
+  model_properties: {
+    "dimensions": 1536,
+    "distance_metric": "cosine"
+      }
+    }).catch((err) => {
+      if (err.response?.status !== 409) throw err;
+    });
+
+    // Prepare documents
+    const docs = requirements.map((text, i) => ({
+      _id: `req_${Date.now()}_${i}`,
+      text,
+      _embedding: embeddings[i],
+    }));
+
+    // Upload
+    const res = await axios.post(
+      `${MARQO_URL}/indexes/${INDEX_NAME}/documents`,
+      { documents: docs }
+    );
+
+    console.log(`✅ Stored ${docs.length} documents in Marqo`);
+    return res.data;
+  } catch (err) {
+    console.error("❌ Failed to store in Marqo:", err.response?.data || err.message);
+    throw err;
+  }
 
     // Step 1 — PCA reduction (1536D → 2D)
     const pca = new PCA(embeddings);
@@ -144,7 +200,8 @@ app.post("/embed", async (req, res) => {
       console.log(`📊 Debug: reduced array length = ${reduced.length}`);
       console.log(`📊 Debug: reduced[0] =`, reduced[0]);
       
-      const k = Math.min(Math.max(6, Math.floor(numRequirements / 4)), Math.floor(numRequirements / 2)); // 6 to n/2 clusters
+      // compute k from point density (adaptive)
+      const k = computeAdaptiveK(reduced, numRequirements, { minK: 2, maxRatio: 0.5, scale: 2 });
       console.log(`🔧 Using K-means with k=${k} clusters for ${numRequirements} points`);
       console.log(`📊 Debug: k value = ${k} (type: ${typeof k})`);
       console.log(`📊 Debug: reduced array type = ${Array.isArray(reduced) ? 'array' : typeof reduced}`);
@@ -206,8 +263,8 @@ app.post("/embed", async (req, res) => {
       console.log(`📊 Debug: numRequirements = ${numRequirements}`);
       console.log(`📊 Debug: reduced array length = ${reduced.length}`);
       
-      const k = Math.min(Math.max(6, Math.floor(numRequirements / 4)), Math.floor(numRequirements / 2)); // 6 to n/2 clusters
-      console.log(`🔧 Using K-means with k=${k} clusters for ${numRequirements} points`);
+      const k = computeAdaptiveK(reduced, numRequirements, { minK: 2, maxRatio: 0.5, scale: 2 });
+      console.log(`🔧 Using adaptive K-means with k=${k} clusters for ${numRequirements} points`);
       console.log(`📊 Debug: k value = ${k} (type: ${typeof k})`);
       
       const kmeansResult = kmeans(reduced, k);
